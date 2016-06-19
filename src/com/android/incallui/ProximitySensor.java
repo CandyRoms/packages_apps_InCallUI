@@ -50,6 +50,8 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
         InCallStateListener, AudioModeListener, SensorEventListener {
     private static final String TAG = ProximitySensor.class.getSimpleName();
 
+    private static final String PROXIMITY_SENSOR = "proximity_sensor";
+
     private final PowerManager mPowerManager;
     private final PowerManager.WakeLock mProximityWakeLock;
     private SensorManager mSensor;
@@ -66,8 +68,8 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     private boolean mIsProxSensorFar = true;
     private int mProxSpeakerDelay = 100;
     private boolean mDialpadVisible;
-
     private Context mContext;
+
     private final Handler mHandler = new Handler();
     private final Runnable mActivateSpeaker = new Runnable() {
         @Override
@@ -109,6 +111,7 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
 
     public ProximitySensor(Context context, AudioModeProvider audioModeProvider,
             AccelerometerListener accelerometerListener) {
+        mContext = context;
         mPowerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
 
         if (mPowerManager.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
@@ -322,6 +325,8 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
                     || CallAudioState.ROUTE_SPEAKER == audioMode
                     || CallAudioState.ROUTE_BLUETOOTH == audioMode
                     || mIsHardKeyboardOpen);
+            screenOnImmediately |= Settings.System.getInt(mContext.getContentResolver(),
+                    PROXIMITY_SENSOR, 1) == 0;
 
             // We do not keep the screen off when the user is outside in-call screen and we are
             // horizontal, but we do not force it on when we become horizontal until the

@@ -83,7 +83,7 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     public ProximitySensor(Context context, AudioModeProvider audioModeProvider,
             AccelerometerListener accelerometerListener) {
         mPowerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-
+        
         if (mPowerManager.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
             mProximityWakeLock = mPowerManager.newWakeLock(
                     PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, TAG);

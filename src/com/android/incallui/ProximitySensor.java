@@ -63,13 +63,12 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     private boolean mIsPhoneOutgoing = false;
     private boolean mIsPhoneOffhook = false;
     private boolean mProximitySpeaker = false;
-    private boolean mIsProxSensorFar = true;
     private int mProxSpeakerDelay = 100;
     private boolean mDialpadVisible;
 
     private Context mContext;
     private final Handler mHandler = new Handler();
-    private final Runnable mActivateSpeaker = new Runnable() {
+    private final Runnable mRunnable = new Runnable() {
         @Override
         public void run() {
             TelecomAdapter.getInstance().setAudioRoute(AudioMode.SPEAKER);
@@ -117,9 +116,6 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
         if (mSensor != null) {
             mSensor.unregisterListener(this);
         }
-
-        // remove any pending audio changes scheduled
-        mHandler.removeCallbacks(mActivateSpeaker);
     }
 
     /**
@@ -141,20 +137,25 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
         // can also put the in-call screen in the INCALL state.
         boolean hasOngoingCall = InCallState.INCALL == newState && callList.hasLiveCall();
         boolean isOffhook = (InCallState.OUTGOING == newState) || hasOngoingCall;
-        mIsPhoneOutgoing = (InCallState.OUTGOING == newState);
+        mHasIncomingCall = (InCallState.INCOMING == newState);
+        boolean isOutgoing = (InCallState.OUTGOING == newState);
+
+        // remove any pending audio changes scheduled
+        mHandler.removeCallbacks(mRunnable);
 
         if (isOffhook != mIsPhoneOffhook) {
             mIsPhoneOffhook = isOffhook;
+            mIsPhoneOutgoing = isOutgoing;
 
             mOrientation = AccelerometerListener.ORIENTATION_UNKNOWN;
             mAccelerometerListener.enable(mIsPhoneOffhook);
 
             updateProxSpeaker();
             updateProximitySensorMode();
-        }
-
-        if (hasOngoingCall && InCallState.OUTGOING == oldState) {
-            setProxSpeaker(mIsProxSensorFar);
+        } else if (isOutgoing != mIsPhoneOutgoing) {
+            mIsPhoneOutgoing = isOutgoing;
+            updateProxSpeaker();
+            updateProximitySensorMode();
         }
 
         if (mHasIncomingCall) {
@@ -184,12 +185,10 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.values[0] != mProxSensor.getMaximumRange()) {
-            mIsProxSensorFar = false;
+            setProxSpeaker(false);
         } else {
-            mIsProxSensorFar = true;
+            setProxSpeaker(true);
         }
-
-        setProxSpeaker(mIsProxSensorFar);
     }
 
     @Override
@@ -389,13 +388,8 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
     }
 
     private void setProxSpeaker(final boolean speaker) {
-        // remove any pending audio changes scheduled
-        mHandler.removeCallbacks(mActivateSpeaker);
-
         final int audioMode = mAudioModeProvider.getAudioMode();
-        final boolean proxSpeakerIncallOnlyPref =
-                (Settings.System.getInt(mContext.getContentResolver(),
-                Settings.System.PROXIMITY_AUTO_SPEAKER_INCALL_ONLY, 0) == 1);
+
         mProxSpeakerDelay = Settings.System.getInt(mContext.getContentResolver(),
                 Settings.System.PROXIMITY_AUTO_SPEAKER_DELAY, 100);
 
@@ -411,16 +405,23 @@ public class ProximitySensor implements AccelerometerListener.OrientationListene
                 // if proximity sensor determines audio mode should be speaker,
                 // but it currently isn't
                 if (speaker && audioMode != AudioMode.SPEAKER) {
+
                     // if prox incall only is off, we set to speaker as long as phone
                     // is off hook, ignoring whether or not the call state is outgoing
-                    if (!proxSpeakerIncallOnlyPref
+                    if (Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.PROXIMITY_AUTO_SPEAKER_INCALL_ONLY, 0) == 0
                             // or if prox incall only is on, we have to check the call
                             // state to decide if AudioMode should be speaker
-                            || (proxSpeakerIncallOnlyPref && !mIsPhoneOutgoing)) {
-                        mHandler.postDelayed(mActivateSpeaker, mProxSpeakerDelay);
+                            || (Settings.System.getInt(mContext.getContentResolver(),
+                            Settings.System.PROXIMITY_AUTO_SPEAKER_INCALL_ONLY, 0) == 1
+                            && !mIsPhoneOutgoing)) {
+                        mHandler.removeCallbacks(mRunnable);
+                        mHandler.postDelayed(mRunnable, mProxSpeakerDelay);
                     }
                 } else if (!speaker) {
+                    mHandler.removeCallbacks(mRunnable);
                     TelecomAdapter.getInstance().setAudioRoute(AudioMode.EARPIECE);
+                    updateProximitySensorMode();
                 }
             }
     }
